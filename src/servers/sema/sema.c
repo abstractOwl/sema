@@ -1,10 +1,30 @@
 #include "sema.h"
 
+#define INITIAL_SIZE 10
+#define EXPAND_RATIO 0.5
+
 /**
  * This file contains the main program of a semaphore service implementation
  * for MINIX.
  */
 
+int			*semaphores;
+size_t	sem_len;				// Tracks the current size of the semaphore array
+size_t	tail_pos;				// Tracks the position of the slot after the last
+												//   initialized semaphore
+size_t	min_empty_pos;	// Tracks the minimum open slot
+
+// Function signatures
+void die(const char *message);
+void log(const char *message);
+
+int do_sem_up				(message *msg);
+int do_sem_down			(message *msg);
+int do_sem_release	(message *msg);
+int do_sem_init			(message *msg);
+
+
+// Utility functions
 
 /**
  * Prints an error message to stderr and exits.
@@ -23,72 +43,78 @@ void log(const char *message)
 	fprintf(stdout, "sema.c [INFO ]: %s\n", message);
 }
 
+
+// Semaphore Functions
+/**
+ * Initializes the semaphore array.
+ */
+int init_sem()
+{
+	sem_len				= INITIAL_SIZE;
+	semaphores		= (int *) malloc(sizeof (int) * sem_len);
+	tail_pos			= 0;
+	min_empty_pos	= 0;
+}
+
+int do_sem_up(message *msg)
+{
+	log("SEM_UP received.");
+	return OK;
+}
+int do_sem_down(message *msg)
+{
+	log("SEM_DOWN received.");
+	return OK;
+}
+int do_sem_release(message *msg)
+{
+	log("SEM_RELEASE received.");
+	return OK;
+}
+int do_sem_init(message *msg)
+{
+	log("SEM_INIT received.");
+	return OK;
+}
+
+
+// sema.c main function
 int main(void)
 {
-		int call_nr;		// System call number
-		int who_e;			// Caller endpoint
-		int result;			// Result to system call
-		int rv;
-		int s;
+	int			result;	// Result to system call
+	message	msg;		// Incoming message
 
-    message  m_in;	// Incoming message
+	// Initialize service
+	init_sem();
 
-		//
-		sef_local_startup();
-		if ((s = sys_getmachine(&machine)) != OK) {
-			die("Could not get machine info");
+	// Main loop
+	while (TRUE) {
+		int ipc_status;
+
+		ipc_receive(&msg);
+
+		switch (msg.m_type) {
+		case SEM_DOWN:
+			result = do_sem_down(&msg);
+			break;
+		case SEMA_INIT:
+			result = do_sem_init(&msg);
+			break;
+		case SEM_RELEASE:
+			result = do_sem_release(&msg);
+			break;
+		case SEM_UP:
+			result = do_sem_up(&msg);
+			break;
+		default:
+			result = EINVAL;
 		}
-
-		// Initialize service
-		//init_sema(); // TODO: Implement this function
-
-		// Main loop
-		while (TRUE) {
-			int ipc_status;
-
-			if (sef_receive_status(ANY, &m_in, &ipc_status) != OK) {
-				die("sef_receive_status error");
-			}
-			who_e   = m_in.m_source;  // Sender endpoint
-			call_nr = m_in.m_type;    // Syscall number
-
-			// Check for system notifications first
-			if (is_ipc_notify(ipc_status)) {
-				switch (who_e) {
-				case CLOCK:
-					expire_timers(m_in.NOTIFY_TIMESTAMP);
-					continue; // Don't reply
-				default:
-					result = ENOSYS;
-				}
-
-				if (result != SUSPEND) {
-					// Send reply
-					m_in.m_type = result;
-					int s = send(who_e, &m_in);
-					if (s != OK) {
-						printf("SEMA: Unable to reply to endpoint %d, code %d\n", who_e, s);
-					}
-				}
-			} else {
-				switch (call_nr) {
-					case SEM_DOWN:
-						log("SEM_DOWN received.");
-						break;
-					case SEM_INIT:
-						log("SEM_INIT received.");
-						break;
-					case SEM_RELEASE:
-						log("SEM_RELEASE received.");
-						break;
-					case SEM_UP:
-						log("SEM_UP received.");
-						break;
-					default:
-						result = no_sys(who_e, call_nr);
-				}
-			}
+		
+		if (result != EDONTREPLY) {
+			msg.m_type = result;
+			ipc_reply(msg.m_source, &msg);
 		}
+	}
 
-    return OK;
+	return OK;
 }
