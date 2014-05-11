@@ -1286,12 +1286,16 @@
  *===========================================================================*/
 
 /* Message types for Semaphore Service drivers */
-#define SEM_BASE    0x1700
+#define SEM_BASE         0x1700
 
 #define SEM_INIT        (SEM_BASE + 0)
 #define SEM_DOWN        (SEM_BASE + 1)
 #define SEM_UP          (SEM_BASE + 2)
 #define SEM_RELEASE     (SEM_BASE + 3)
+
+#define SEM_NUM         m1_i1
+#define SEM_VALUE       m1_i2
+#define SEM_STATUS      m2_i1
 
 /* Semaphore service message fields */
 

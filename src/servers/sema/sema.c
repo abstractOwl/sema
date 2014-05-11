@@ -1,7 +1,7 @@
 #include "sema.h"
 
-#define INITIAL_SIZE 10
-#define EXPAND_RATIO 1.5
+#define INITIAL_SIZE  10
+#define EXPAND_FACTOR 1.5
 
 #ifndef OK
 #define OK 0
@@ -59,6 +59,7 @@ int next_empty_pos()
 			return i;
 		}
 	}
+	return -1;
 }
 
 
@@ -68,10 +69,21 @@ int next_empty_pos()
  */
 int init_sem()
 {
+	int i;
+
+	log("Initializing semaphore service...");
+
 	sem_len				= INITIAL_SIZE;
 	semaphores		= (semaphore_t *) malloc(sizeof (semaphore_t) * sem_len);
 	tail_pos			= 0;
 	min_empty_pos	= 0;
+
+	// Because malloc does not zero out memory
+	for (i = 0; i < sem_len; i++) {
+		semaphores[i].in_use = 0;
+	}
+
+	log("Semaphore service initialized.");
 }
 
 int do_sem_up(message *msg)
@@ -103,6 +115,19 @@ int do_sem_release(message *msg)
 int do_sem_init(message *msg)
 {
 	log("SEM_INIT received.");
+
+	int sem_index;
+	if (tail_pos < sem_len) {
+		sem_index = tail_pos;
+		tail_pos++;
+	} else if (min_empty_pos != -1) {
+		sem_index = min_empty_pos;
+		min_empty_pos = next_empty_pos;
+	} else {
+		realloc(semaphores, sem_len * EXPAND_FACTOR);
+		sem_index = tail_pos;
+		tail_pos++;
+	}
 	return OK;
 }
 
