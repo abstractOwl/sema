@@ -77,7 +77,7 @@ int next_empty_pos()
  */
 int init_sem()
 {
-	sem_len				= INITIAL_SIZE;
+	sem_len				= INITIAL SIZE;
 	semaphores		= (semaphore_t *) malloc(sizeof (semaphore_t) * sem_len);
 	tail_pos			= 0;
 	min_empty_pos	= 0;
@@ -86,16 +86,27 @@ int init_sem()
 int do_sem_up(message *msg)
 {
 	log("SEM_UP received.");
+
+	// Increment value
+
+	// If there are items on the queue, process them
+
 	return OK;
 }
 int do_sem_down(message *msg)
 {
 	log("SEM_DOWN received.");
+
+	// If value == 0, add this item to queue
+
+	// Else, decrement value
+
 	return OK;
 }
 int do_sem_release(message *msg)
 {
 	log("SEM_RELEASE received.");
+
 	return OK;
 }
 int do_sem_init(message *msg)
