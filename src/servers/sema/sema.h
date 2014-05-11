@@ -5,6 +5,9 @@
 #ifndef SEMA_H
 #define SEMA_H
 
+#include <stdlib.h>
+#include <stdio.h>
+
 #include <minix/config.h>
 #include <sys/types.h>
 #include <minix/const.h>
