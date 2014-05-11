@@ -1293,4 +1293,6 @@
 #define SEM_UP          (SEMA_RQ_BASE + 2)
 #define SEM_RELEASE     (SEMA_RQ_BASE + 3)
 
+/* Semaphore service message fields */
+
 /* _MINIX_COM_H */
