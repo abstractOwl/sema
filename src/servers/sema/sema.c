@@ -179,7 +179,7 @@ int main(void)
 				result = do_sem_up(&msg);
 				break;
 			default:
-				result = no_sys(who_e, call_nr);
+				result = EINVAL;
 			}
 		}
 
