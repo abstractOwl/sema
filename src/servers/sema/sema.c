@@ -3,17 +3,14 @@
 #define INITIAL_SIZE 10
 #define EXPAND_RATIO 1.5
 
+#ifndef OK
+#define OK 0
+#endif
+
 /**
  * This file contains the main program of a semaphore service implementation
  * for MINIX.
  */
-
-semaphore_t	*semaphores;
-size_t			sem_len;				// Tracks the current size of the semaphore array
-size_t			tail_pos;				// Tracks the position of the slot after the last
-														//   initialized semaphore
-size_t			min_empty_pos;	// Tracks the minimum open slot
-
 
 // Structs
 typedef struct
@@ -27,6 +24,16 @@ typedef struct
 	unsigned int value;
 	endpoint_t   *next;
 } semaphore_t;
+
+
+// Define vars
+
+semaphore_t	*semaphores;
+size_t			sem_len;				// Tracks the current size of the semaphore array
+size_t			tail_pos;				// Tracks the position of the slot after the last
+														//   initialized semaphore
+size_t			min_empty_pos;	// Tracks the minimum open slot
+
 
 // Function signatures
 void die(const char *message);
@@ -77,7 +84,7 @@ int next_empty_pos()
  */
 int init_sem()
 {
-	sem_len				= INITIAL SIZE;
+	sem_len				= INITIAL_SIZE;
 	semaphores		= (semaphore_t *) malloc(sizeof (semaphore_t) * sem_len);
 	tail_pos			= 0;
 	min_empty_pos	= 0;
@@ -157,35 +164,30 @@ int main(void)
 				default:
 					result = ENOSYS;
 			}
-
-			if (result != SUSPEND) {
-				msg.m_type = result;
-				if (send(who, msg) != OK) {
-					LOG("Unable to send reply to endpoint");
-				}
+		} else {
+			switch (call_nr) {
+			case SEM_DOWN:
+				result = do_sem_down(&msg);
+				break;
+			case SEM_INIT:
+				result = do_sem_init(&msg);
+				break;
+			case SEM_RELEASE:
+				result = do_sem_release(&msg);
+				break;
+			case SEM_UP:
+				result = do_sem_up(&msg);
+				break;
+			default:
+				result = no_sys(who_e, call_nr);
 			}
 		}
 
-		switch (call_nr) {
-		case SEM_DOWN:
-			result = do_sem_down(&msg);
-			break;
-		case SEM_INIT:
-			result = do_sem_init(&msg);
-			break;
-		case SEM_RELEASE:
-			result = do_sem_release(&msg);
-			break;
-		case SEM_UP:
-			result = do_sem_up(&msg);
-			break;
-		default:
-			result = EINVAL;
-		}
-		
-		if (result != EDONTREPLY) {
+		if (result != SUSPEND) {
 			msg.m_type = result;
-			ipc_reply(msg.m_source, &msg);
+			if (send(who, &msg) != OK) {
+				log("Unable to send reply to endpoint");
+			}
 		}
 	}
 
