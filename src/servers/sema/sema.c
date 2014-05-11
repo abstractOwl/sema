@@ -12,22 +12,6 @@
  * for MINIX.
  */
 
-// Structs
-typedef struct link_t
-{
-	endpoint_t *value;
-	link_t     *next;
-} link_t;
-
-typedef struct semaphore_t
-{
-	unsigned int value;
-	endpoint_t   *next;
-} semaphore_t;
-
-
-// Define vars
-
 semaphore_t	*semaphores;
 size_t			sem_len;				// Tracks the current size of the semaphore array
 size_t			tail_pos;				// Tracks the position of the slot after the last
@@ -71,7 +55,7 @@ int next_empty_pos()
 	// updated each sem_release
 	int i;
 	for (i = min_empty_pos + 1; i < sem_len; i++) {
-		if (semaphores[i] == NULL) {
+		if (semaphores[i].in_use == 0) {
 			return i;
 		}
 	}

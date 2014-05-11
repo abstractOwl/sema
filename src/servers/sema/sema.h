@@ -18,6 +18,20 @@
 
 #include <errno.h>
 
+// Structs
+typedef struct link_t
+{
+	endpoint_t    *value;
+	struct link_t *next;
+} link_t;
+
+typedef struct semaphore_t
+{
+	unsigned int value;
+	link_t       *next;
+	int          in_use;
+} semaphore_t;
+
 //#include "proto.h"
 
 //int do_sem_init();
