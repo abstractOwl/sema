@@ -13,13 +13,13 @@
  */
 
 // Structs
-typedef struct
+typedef struct link_t
 {
 	endpoint_t *value;
 	link_t     *next;
 } link_t;
 
-typedef struct
+typedef struct semaphore_t
 {
 	unsigned int value;
 	endpoint_t   *next;
