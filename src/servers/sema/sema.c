@@ -72,7 +72,7 @@ static int next_empty_pos()
 /**
  * Initializes the semaphore array.
  */
-static void init_sem()
+static int init_sem()
 {
 	int i;
 
@@ -94,6 +94,7 @@ static void init_sem()
 	}
 
 	log("Semaphore service initialized.");
+	return OK;
 }
 
 int do_sem_up(message *msg)
@@ -106,7 +107,7 @@ int do_sem_up(message *msg)
 		return EINVAL;
 	}
 
-	sem = semaphores[msg->SEM_VALUE];
+	sem = &semaphores[msg->SEM_VALUE];
 	
 	// Check that semaphore is initialized
 	if (sem->in_use == 0) {
@@ -138,11 +139,12 @@ int do_sem_down(message *msg)
 	log("SEM_DOWN received.");
 
 	// Bounds check
-	if (msg->SEM_VALUE == 0 || msg->SEM_VALUE > &(semaphores[sem_len])) {
+	if (msg->SEM_VALUE == 0 ||
+			&(semaphores[msg->SEM_VALUE]) > &(semaphores[sem_len])) {
 		return EINVAL;
 	}
 
-	sem = semaphores[msg->SEM_VALUE];
+	sem = &semaphores[msg->SEM_VALUE];
 	
 	// Check that semaphore is initialized
 	if (sem->in_use == 0) {
@@ -159,7 +161,7 @@ int do_sem_down(message *msg)
 		ep->value  = msg->m_source;
 		ep->next   = NULL;
 
-		tail = ((head == 0 ? head : tail->next) = ep);
+		sem->tail = ((sem->head == 0 ? sem->head : sem->tail->next) = ep);
 		return SUSPEND;
 	} else {
 		// else, decrement value
@@ -196,7 +198,7 @@ int do_sem_init(message *msg)
 		tail_pos++;
 	} else if (min_empty_pos != -1) {
 		sem_index = min_empty_pos;
-		min_empty_pos = next_empty_pos;
+		min_empty_pos = next_empty_pos();
 	} else {
 		semaphore_t* tmp =
 			(semaphore_t *) realloc(semaphores, sem_len * EXPAND_FACTOR);
@@ -228,7 +230,6 @@ int main(void)
 	message			msg;			// Incoming message
 	int					call_nr;	// System call number
 	int					result;		// Result to system call
-	int					rv;
 	int					s;
 
 	// SEF local startup
