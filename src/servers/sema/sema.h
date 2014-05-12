@@ -1,9 +1,8 @@
-/**
- * Header file for the semaphore service.
- */
+/* Function prototypes */
 
-#ifndef SEMA_H
-#define SEMA_H
+#define _POSIX_SOURCE 1
+#define _MINIX        1
+#define _SYSTEM       1
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,29 +11,17 @@
 #include <sys/types.h>
 #include <minix/const.h>
 
+#include <minix/com.h>
 #include <minix/syslib.h>
 #include <minix/sysutil.h>
-#include <minix/timers.h>
 
 #include <errno.h>
 
-// Structs
-typedef struct link_t
-{
-	endpoint_t    *value;
-	struct link_t *next;
-} link_t;
+extern struct machine machine;
 
-typedef struct semaphore_t
-{
-	unsigned int value;
-	link_t       *next;
-	int          in_use;
-} semaphore_t;
-
-//#include "proto.h"
-
-//int do_sem_init();
-//int do_sem_down();
-
-#endif
+/* main.c */
+int do_sem_up      (message *msg);
+int do_sem_down    (message *msg);
+int do_sem_release (message *msg);
+int do_sem_init    (message *msg);
+int main(void);

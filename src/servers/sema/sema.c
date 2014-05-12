@@ -12,6 +12,22 @@
  * for MINIX.
  */
 
+
+typedef struct link_t
+{
+	endpoint_t    value;
+	struct link_t *next;
+} link_t;
+
+typedef struct semaphore_t
+{
+	unsigned int value;
+	link_t       *head;
+	link_t       *tail;
+	int          in_use;
+} semaphore_t;
+
+
 semaphore_t	*semaphores;
 size_t			sem_len;				// Tracks the current size of the semaphore array
 size_t			tail_pos;				// Tracks the position of the slot after the last
@@ -19,23 +35,12 @@ size_t			tail_pos;				// Tracks the position of the slot after the last
 size_t			min_empty_pos;	// Tracks the minimum open slot
 
 
-// Function signatures
-void die(const char *message);
-void log(const char *message);
-int  next_empty_pos();
-
-int do_sem_up				(message *msg);
-int do_sem_down			(message *msg);
-int do_sem_release	(message *msg);
-int do_sem_init			(message *msg);
-
-
 // Utility functions
 
 /**
  * Prints an error message to stderr and exits.
  */
-void die(const char *message)
+static void die(const char *message)
 {
 	fprintf(stderr, "sema.c [ERROR]: %s\n", message);
 	exit(EXIT_FAILURE);
@@ -44,12 +49,12 @@ void die(const char *message)
 /**
  * Logs a message to stdout.
  */
-void log(const char *message)
+static void log(const char *message)
 {
 	fprintf(stdout, "sema.c [INFO ]: %s\n", message);
 }
 
-int next_empty_pos()
+static int next_empty_pos()
 {
 	// There can be no empty slots before min_empty_pos since min_empty_pos is
 	// updated each sem_release
@@ -67,7 +72,7 @@ int next_empty_pos()
 /**
  * Initializes the semaphore array.
  */
-int init_sem()
+static void init_sem()
 {
 	int i;
 
@@ -77,6 +82,11 @@ int init_sem()
 	semaphores		= (semaphore_t *) malloc(sizeof (semaphore_t) * sem_len);
 	tail_pos			= 0;
 	min_empty_pos	= 0;
+
+	if (semaphores == 0) {
+		log("init_sem(): Ran out of memory");
+		return ENOMEM;
+	}
 
 	// Because malloc does not zero out memory
 	for (i = 0; i < sem_len; i++) {
@@ -88,27 +98,90 @@ int init_sem()
 
 int do_sem_up(message *msg)
 {
+	semaphore_t *sem;
 	log("SEM_UP received.");
 
-	// Increment value
+	// Bounds check
+	if (msg->SEM_VALUE == 0 || msg->SEM_VALUE > &(semaphores[sem_len])) {
+		return EINVAL;
+	}
 
-	// If there are items on the queue, process them
+	sem = semaphores[msg->SEM_VALUE];
+	
+	// Check that semaphore is initialized
+	if (sem->in_use == 0) {
+		return EINVAL;
+	}
+
+	if (sem->head == NULL) {
+		// Increment value
+		++sem->value;
+	} else {
+		// if there are items on the queue, process one
+		
+		// Notify endpoint
+		message msg;
+		msg.SEM_VALUE = sem->value;
+		send(sem->head->value, &msg);
+
+		// Dequeue
+		link_t *tmp = sem->head;
+		sem->head = sem->head->next;
+		free(tmp);
+	}
 
 	return OK;
 }
 int do_sem_down(message *msg)
 {
+	semaphore_t *sem;
 	log("SEM_DOWN received.");
 
-	// If value == 0, add this item to queue
+	// Bounds check
+	if (msg->SEM_VALUE == 0 || msg->SEM_VALUE > &(semaphores[sem_len])) {
+		return EINVAL;
+	}
 
-	// Else, decrement value
+	sem = semaphores[msg->SEM_VALUE];
+	
+	// Check that semaphore is initialized
+	if (sem->in_use == 0) {
+		return EINVAL;
+	}
 
-	return OK;
+	if (sem->value == 0) {
+		// if value == 0, add this item to queue
+		link_t *ep = malloc(sizeof(link_t));
+		if (ep == 0) {
+			log("do_sem_down(): Ran out of memory");
+			return ENOMEM;
+		}
+		ep->value  = msg->m_source;
+		ep->next   = NULL;
+
+		tail = ((head == 0 ? head : tail->next) = ep);
+		return SUSPEND;
+	} else {
+		// else, decrement value
+		--sem->value;
+		return OK;
+	}
 }
 int do_sem_release(message *msg)
 {
 	log("SEM_RELEASE received.");
+
+	if (semaphores[msg->SEM_NUM].head != 0) {
+		log("do_sem_release(): Tried to release active semaphore");
+		return EINUSE;
+	}
+
+	semaphores[msg->SEM_NUM].in_use = 0;
+
+	// Update min empty pos ptr
+	if (min_empty_pos == -1 || min_empty_pos > msg->SEM_NUM) {
+		min_empty_pos = msg->SEM_NUM;
+	}
 
 	return OK;
 }
@@ -116,6 +189,7 @@ int do_sem_init(message *msg)
 {
 	log("SEM_INIT received.");
 
+	// Find empty slot
 	int sem_index;
 	if (tail_pos < sem_len) {
 		sem_index = tail_pos;
@@ -124,11 +198,24 @@ int do_sem_init(message *msg)
 		sem_index = min_empty_pos;
 		min_empty_pos = next_empty_pos;
 	} else {
-		realloc(semaphores, sem_len * EXPAND_FACTOR);
-		sem_index = tail_pos;
+		semaphore_t* tmp =
+			(semaphore_t *) realloc(semaphores, sem_len * EXPAND_FACTOR);
+		if (tmp == 0) {
+			log("do_sem_init(): Ran out of memory");
+			return ENOMEM;
+		}
+		semaphores = tmp;
+		sem_index  = tail_pos;
 		tail_pos++;
 	}
-	return OK;
+
+	// Initialize new semaphore at sem_index
+	semaphores[sem_index].value  = msg->SEM_VALUE;
+	semaphores[sem_index].head   = NULL;
+	semaphores[sem_index].tail   = NULL;
+	semaphores[sem_index].in_use = 1;
+
+	return sem_index;
 }
 
 

@@ -1,8 +1,19 @@
+#define _SYSTEM 1
+#define _MINIX  1
+
 #include <sys/cdefs.h>
 #include "namespace.h"
 #include <lib.h>
 
 #include <minix/rs.h>
+#include <minix/sema.h>
+
+#ifdef __weak_alias
+__weak_alias(sem_init,    _sem_init)
+__weak_alias(sem_down,    _sem_down)
+__weak_alias(sem_up,      _sem_up)
+__weak_alias(sem_release, _sem_release)
+#endif
 
 static int get_sema_endpt(endpoint_t *pt)
 {
