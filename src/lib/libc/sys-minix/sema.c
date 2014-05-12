@@ -1,6 +1,6 @@
 #define _SYSTEM 1
-#define _MINIX  1
 
+#include <sys/com.h>
 #include <sys/cdefs.h>
 #include "namespace.h"
 #include <lib.h>
