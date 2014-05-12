@@ -103,7 +103,8 @@ int do_sem_up(message *msg)
 	log("SEM_UP received.");
 
 	// Bounds check
-	if (msg->SEM_VALUE == 0 || msg->SEM_VALUE > &(semaphores[sem_len])) {
+	if (msg->SEM_VALUE == 0 ||
+			&(semaphores[msg->SEM_VALUE]) > &(semaphores[sem_len])) {
 		return EINVAL;
 	}
 
@@ -161,7 +162,12 @@ int do_sem_down(message *msg)
 		ep->value  = msg->m_source;
 		ep->next   = NULL;
 
-		sem->tail = ((sem->head == 0 ? sem->head : sem->tail->next) = ep);
+		if (sem->head == 0) {
+			sem->head       = ep;
+		} else {
+			sem->tail->next = ep;
+		}
+		sem->tail = ep;
 		return SUSPEND;
 	} else {
 		// else, decrement value
