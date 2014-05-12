@@ -6,7 +6,7 @@
 #include <lib.h>
 
 #include <minix/rs.h>
-#include <minix/sema.h>
+#include <sema.h>
 
 #ifdef __weak_alias
 __weak_alias(sem_init,    _sem_init)
