@@ -3,6 +3,18 @@
 #define INITIAL_SIZE  10
 #define EXPAND_FACTOR 1.5
 
+#define DEBUG
+#ifdef DEBUG
+#define DIE(msg, ...) { \
+	fprintf(stdout, "sema.c [ERROR]: " msg "\n", __VA_ARGS__); \
+	exit(EXIT_FAILURE); \
+}
+#define LOG(msg, ...) fprintf(stdout, "sema.c [INFO ]: " msg "\n", __VA_ARGS__)
+#else
+#define DIE(...)
+#define LOG(...)
+#endif
+
 #ifndef OK
 #define OK 0
 #endif
@@ -37,23 +49,6 @@ size_t			min_empty_pos;	// Tracks the minimum open slot
 
 // Utility functions
 
-/**
- * Prints an error message to stderr and exits.
- */
-static void die(const char *message)
-{
-	fprintf(stderr, "sema.c [ERROR]: %s\n", message);
-	exit(EXIT_FAILURE);
-}
-
-/**
- * Logs a message to stdout.
- */
-static void log(const char *message)
-{
-	fprintf(stdout, "sema.c [INFO ]: %s\n", message);
-}
-
 static int next_empty_pos()
 {
 	// There can be no empty slots before min_empty_pos since min_empty_pos is
@@ -84,7 +79,7 @@ static int init_sem()
 	min_empty_pos	= 0;
 
 	if (semaphores == 0) {
-		log("init_sem(): Ran out of memory");
+		LOG("init_sem(): Ran out of memory");
 		return ENOMEM;
 	}
 
@@ -93,14 +88,14 @@ static int init_sem()
 		semaphores[i].in_use = 0;
 	}
 
-	log("Semaphore service initialized.");
+	LOG("Semaphore service initialized.");
 	return OK;
 }
 
 int do_sem_up(message *msg)
 {
 	semaphore_t *sem;
-	log("SEM_UP received.");
+	LOG("SEM_UP received.");
 
 	// Bounds check
 	if (msg->SEM_VALUE == 0 ||
@@ -137,7 +132,7 @@ int do_sem_up(message *msg)
 int do_sem_down(message *msg)
 {
 	semaphore_t *sem;
-	log("SEM_DOWN received.");
+	LOG("SEM_DOWN received.");
 
 	// Bounds check
 	if (msg->SEM_VALUE == 0 ||
@@ -156,7 +151,7 @@ int do_sem_down(message *msg)
 		// if value == 0, add this item to queue
 		link_t *ep = malloc(sizeof(link_t));
 		if (ep == 0) {
-			log("do_sem_down(): Ran out of memory");
+			LOG("do_sem_down(): Ran out of memory");
 			return ENOMEM;
 		}
 		ep->value  = msg->m_source;
@@ -177,10 +172,10 @@ int do_sem_down(message *msg)
 }
 int do_sem_release(message *msg)
 {
-	log("SEM_RELEASE received.");
+	LOG("SEM_RELEASE received.");
 
 	if (semaphores[msg->SEM_NUM].head != 0) {
-		log("do_sem_release(): Tried to release active semaphore");
+		LOG("do_sem_release(): Tried to release active semaphore");
 		return EINUSE;
 	}
 
@@ -195,7 +190,7 @@ int do_sem_release(message *msg)
 }
 int do_sem_init(message *msg)
 {
-	log("SEM_INIT received.");
+	LOG("SEM_INIT received.");
 
 	// Find empty slot
 	int sem_index;
@@ -209,7 +204,7 @@ int do_sem_init(message *msg)
 		semaphore_t* tmp =
 			(semaphore_t *) realloc(semaphores, sem_len * EXPAND_FACTOR);
 		if (tmp == 0) {
-			log("do_sem_init(): Ran out of memory");
+			LOG("do_sem_init(): Ran out of memory");
 			return ENOMEM;
 		}
 		semaphores = tmp;
@@ -241,7 +236,7 @@ int main(void)
 	// SEF local startup
 	sef_startup();
 	if ((s = sys_getmachine(&machine)) != OK) {
-		die("Could not get machine info");
+		DIE("Could not get machine info: %d", s);
 	}
 
 	// Initialize service
@@ -249,11 +244,12 @@ int main(void)
 
 	// Main loop
 	while (TRUE) {
+		int rv;
 		int ipc_status;
 
 		// Wait for next message
-		if (sef_receive_status(ANY, &msg, &ipc_status)) {
-			die("sef_receive_status error");
+		if (rv = sef_receive_status(ANY, &msg, &ipc_status)) {
+			DIE("sef_receive_status error: %d", rv);
 		}
 
 		who				= msg.m_source;	// Sender endpoint
@@ -287,9 +283,10 @@ int main(void)
 		}
 
 		if (result != SUSPEND) {
+			int rv;
 			msg.m_type = result;
-			if (send(who, &msg) != OK) {
-				log("Unable to send reply to endpoint");
+			if (rv = send(who, &msg) != OK) {
+				LOG("Unable to send reply to endpoint %d: %d", who, rv);
 			}
 		}
 	}
