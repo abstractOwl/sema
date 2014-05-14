@@ -12,6 +12,10 @@ __weak_alias(sem_up,      _sem_up)
 __weak_alias(sem_release, _sem_release)
 #endif
 
+#ifndef OK
+#define OK 0
+#endif
+
 static int get_sema_endpt(endpoint_t *pt)
 {
 	return minix_rs_lookup("sema", pt);
