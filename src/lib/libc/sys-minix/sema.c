@@ -4,6 +4,7 @@
 #include "namespace.h"
 #include <lib.h>
 
+#include <minix/com.h>
 #include <minix/rs.h>
 
 #ifdef __weak_alias
