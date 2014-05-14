@@ -900,10 +900,10 @@
 #define ptrace _ptrace
 #define readv _readv
 #define rmdir _rmdir
-#define sema_init _sema_init
-#define sema_up _sema_up
-#define sema_down _sema_down
-#define sema_release _sema_release
+#define sem_init _sem_init
+#define sem_up _sem_up
+#define sem_down _sem_down
+#define sem_release _sem_release
 #define setegid _setegid
 #define seteuid _seteuid
 #define setgid _setgid
