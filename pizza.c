@@ -3,7 +3,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-//#include <sema.h>
+#include <sema.h>
 #include <unistd.h>
 
 #define GRAD_NUM    6
@@ -19,7 +19,7 @@ pid_t pids[8];
 // sems[2] - ugrad[0]'s sema
 // sems[3] - ugrad[1]'s sema
 // sems[4] - grad sema
-semaphore_t sems[6];
+int sems[6];
 
 void sig_int_h(int num)
 {
