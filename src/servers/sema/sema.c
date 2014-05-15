@@ -5,11 +5,12 @@
 
 #define DEBUG
 #ifdef DEBUG
-#define DIE(msg, ...) { \
-	fprintf(stdout, "sema.c [ERROR]: " msg "\n", __VA_ARGS__); \
+// clang appears to support GCC __VA_ARGS__ extension
+#define DIE(msg, args...) { \
+	fprintf(stdout, "sema.c [ERROR]: " msg "\n", ## args); \
 	exit(EXIT_FAILURE); \
 }
-#define LOG(msg, ...) fprintf(stdout, "sema.c [INFO ]: " msg "\n", __VA_ARGS__)
+#define LOG(msg, args...) fprintf(stdout, "sema.c [INFO ]: " msg "\n", ## args)
 #else
 #define DIE(...)
 #define LOG(...)
@@ -71,7 +72,7 @@ static int init_sem()
 {
 	int i;
 
-	log("Initializing semaphore service...");
+	LOG("Initializing semaphore service...");
 
 	sem_len				= INITIAL_SIZE;
 	semaphores		= (semaphore_t *) malloc(sizeof (semaphore_t) * sem_len);
@@ -98,12 +99,11 @@ int do_sem_up(message *msg)
 	LOG("SEM_UP received.");
 
 	// Bounds check
-	if (msg->SEM_VALUE == 0 ||
-			&(semaphores[msg->SEM_VALUE]) > &(semaphores[sem_len])) {
+	if (&(semaphores[msg->SEM_NUM]) > &(semaphores[sem_len])) {
 		return EINVAL;
 	}
 
-	sem = &semaphores[msg->SEM_VALUE];
+	sem = &semaphores[msg->SEM_NUM];
 	
 	// Check that semaphore is initialized
 	if (sem->in_use == 0) {
@@ -118,7 +118,7 @@ int do_sem_up(message *msg)
 		
 		// Notify endpoint
 		message msg;
-		msg.SEM_VALUE = sem->value;
+		msg.SEM_NUM = sem->value;
 		send(sem->head->value, &msg);
 
 		// Dequeue
@@ -135,12 +135,11 @@ int do_sem_down(message *msg)
 	LOG("SEM_DOWN received.");
 
 	// Bounds check
-	if (msg->SEM_VALUE == 0 ||
-			&(semaphores[msg->SEM_VALUE]) > &(semaphores[sem_len])) {
+	if (&(semaphores[msg->SEM_NUM]) > &(semaphores[sem_len])) {
 		return EINVAL;
 	}
 
-	sem = &semaphores[msg->SEM_VALUE];
+	sem = &semaphores[msg->SEM_NUM];
 	
 	// Check that semaphore is initialized
 	if (sem->in_use == 0) {
