@@ -66,7 +66,7 @@ void do_grad(int num)
 		sem_down(sems[4]);
 		sem_down(sems[num % 2]);
 		printf("[GRAD ] Grad[%d] eating at table %d\n", num, num % 2 + 1);
-        count++;
+    count++;
 		//sleep(1);
 
 		// Increment the semaphore of U-Grad
@@ -92,28 +92,24 @@ void do_ugrad(int num)
 			sem_down(sems[num % 2 + 2]);
 		}
 
-		// Synchronize with other U-Grad
-		sem_up(sems[3 - (num % 2)]);
-		sem_down(sems[num % 2 + 2]);
-
 		// Eat at table
 		sem_down(sems[num % 2]);
 		printf("[UGRAD] U-Grad[%d] eating at table %d\n", num, num % 2 + 1);
-        count++;
-        //sleep(1);
+    count++;
+    //sleep(1);
+
+		for (i = 0; i < GRAD_NUM / 2; i++) {
+			sem_up(sems[4]);
+		}
+		// If there's a remainder
+		if ((GRAD_NUM % 2 & num % 2) == 1) {
+			sem_up(sems[4]);
+		}
 
 		// Synchronize again with other U-Grad
 		sem_up(sems[3 - (num % 2)]);
 		sem_down(sems[num % 2 + 2]);
 
-		for (i = 0; i < GRAD_NUM / 2; i++) {
-			sem_up(sems[4]);
-		}
-
-		// If there's a remainder
-		if ((GRAD_NUM % 2 & num % 2) == 1) {
-			sem_up(sems[4]);
-		}
 		sem_up(sems[num % 2]);
 	}
 }
