@@ -5,13 +5,6 @@
 #include <minix/com.h>
 #include <minix/rs.h>
 
-#ifdef __weak_alias
-__weak_alias(sem_init,    _sem_init)
-__weak_alias(sem_down,    _sem_down)
-__weak_alias(sem_up,      _sem_up)
-__weak_alias(sem_release, _sem_release)
-#endif
-
 #ifndef OK
 #define OK 0
 #endif
