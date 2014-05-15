@@ -18,8 +18,7 @@ pid_t pids[8];
 // sems[1] - table 2 mutex
 // sems[2] - ugrad[0]'s sema
 // sems[3] - ugrad[1]'s sema
-// sems[4] - grad sema 1
-// sems[5] - grad sema 2
+// sems[4] - grad sema
 semaphore_t sems[6];
 
 void sig_int_h(int num)
@@ -52,7 +51,7 @@ void do_grad(int num)
 		// Do grad student things
 
 		// Try to acquire seat
-		sem_down(sems[num % 2 + 4]);
+		sem_down(sems[4]);
 		sem_down(sems[num % 2]);
 		printf("[GRAD ] Grad[%d] eating\n", num);
 		sleep(1);
@@ -83,15 +82,20 @@ void do_ugrad(int num)
 		// Eat at table
 		sem_down(sems[num % 2]);
 		printf("[UGRAD] U-Grad[%d] eating\n", num);
-		sem_up(sems[num % 2]);
 
 		// Synchronize again with other U-Grad
 		sem_up(sems[3 - (num % 2)]);
 		sem_down(sems[num % 2 + 2]);
 
-		for (i = 0; i < GRAD_NUM; i++) {
-			sem_up(sems[num % 2 + 4]);
+		for (i = 0; i < GRAD_NUM / 2; i++) {
+			sem_up(sems[4]);
 		}
+
+		// If there's a remainder
+		if ((GRAD_NUM % 2 & num % 2) == 1) {
+			sem_up(sems[4]);
+		}
+		sem_up(sems[num % 2]);
 	}
 }
 
@@ -108,10 +112,11 @@ int main(void)
 {
 	int i;
 
-	sems[0] = sem_init(0);
-	sems[1] = sem_init(0);
-	sems[2] = sem_init(GRAD_NUM);
-	sems[3] = sem_init(1);
+	sems[0] = sem_init(1);
+	sems[1] = sem_init(1);
+	sems[2] = sem_init(0);
+	sems[3] = sem_init(0);
+	sems[4] = sem_init(GRAD_NUM);
 
 	for (i = 0; i < STUDENT_NUM; i++) {
 		pids[i] = invoke((i < GRAD_NUM) ? &do_grad : &do_ugrad, i);
