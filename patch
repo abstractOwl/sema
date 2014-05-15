@@ -1,0 +1,547 @@
+Binary files /usr/minix_src_clean/.git/index and /usr/src/.git/index differ
+diff -ruNp /usr/minix_src_clean/etc/system.conf /usr/src/etc/system.conf
+--- /usr/minix_src_clean/etc/system.conf	Sun May 11 04:11:31 2014
++++ /usr/src/etc/system.conf	Thu May 15 08:08:43 2014
+@@ -599,3 +599,10 @@ service fbd
+ 		bios_wini
+ 	;
+ };
++
++service sema
++{
++	system ALL;
++    ipc ALL;
++    uid 0;
++};
+diff -ruNp /usr/minix_src_clean/etc/usr/rc /usr/src/etc/usr/rc
+--- /usr/minix_src_clean/etc/usr/rc	Sun May 11 04:11:31 2014
++++ /usr/src/etc/usr/rc	Thu May 15 08:08:43 2014
+@@ -141,6 +141,7 @@ start)
+     fi
+     up -n printer -dev /dev/lp -period 10HZ
+     up -n ipc
++    up -n sema
+     # start VirtualBox time sync driver if the device is there
+     if grep '^[^ ]* [^ ]* 80EE:CAFE ' /proc/pci >/dev/null; then
+       up -n vbox -period 10HZ
+diff -ruNp /usr/minix_src_clean/include/Makefile /usr/src/include/Makefile
+--- /usr/minix_src_clean/include/Makefile	Sun May 11 04:11:32 2014
++++ /usr/src/include/Makefile	Thu May 15 08:08:43 2014
+@@ -29,6 +29,8 @@ INCS+=	protocols/dumprestore.h protocols/routed.h prot
+ 
+ INCS+=	hesiod.h
+ 
++INCS+=	sema.h
++
+ INCS+=	rpcsvc/yp_prot.h rpcsvc/ypclnt.h
+ 
+ INCS+=  ssp/ssp.h ssp/stdio.h ssp/string.h ssp/strings.h ssp/unistd.h
+diff -ruNp /usr/minix_src_clean/include/minix/com.h /usr/src/include/minix/com.h
+--- /usr/minix_src_clean/include/minix/com.h	Sun May 11 04:11:32 2014
++++ /usr/src/include/minix/com.h	Thu May 15 08:08:43 2014
+@@ -27,6 +27,7 @@
+  *   0x1400 - 0x14FF	VFS-FS transaction IDs
+  *   0x1500 - 0x15FF	Block device requests and responses
+  *   0x1600 - 0x16FF	VirtualBox (VBOX) requests (see vboxif.h)
++ *   0x1700 - 0x17FF    Semaphore Service (SEMA) messages
+  *
+  * Zero and negative values are widely used for OK and error responses.
+  */
+@@ -1279,5 +1280,23 @@
+ /* Bits in 'BDEV_FLAGS' field of block device transfer requests. */
+ #  define BDEV_NOFLAGS		0x00	/* no flags are set */
+ #  define BDEV_FORCEWRITE	0x01	/* force write to disk immediately */
++
++/*===========================================================================*
++ *			Messages for Semaphore Service          *
++ *===========================================================================*/
++
++/* Message types for Semaphore Service drivers */
++#define SEM_BASE         0x1700
++
++#define SEM_INIT        (SEM_BASE + 0)
++#define SEM_DOWN        (SEM_BASE + 1)
++#define SEM_UP          (SEM_BASE + 2)
++#define SEM_RELEASE     (SEM_BASE + 3)
++
++#define SEM_NUM         m1_i1
++#define SEM_VALUE       m1_i2
++#define SEM_STATUS      m2_i1
++
++/* Semaphore service message fields */
+ 
+ /* _MINIX_COM_H */
+diff -ruNp /usr/minix_src_clean/include/sema.h /usr/src/include/sema.h
+--- /usr/minix_src_clean/include/sema.h	Thu Jan  1 00:00:00 1970
++++ /usr/src/include/sema.h	Thu May 15 08:08:43 2014
+@@ -0,0 +1,9 @@
++#ifndef _MINIX_SEMA_H
++#define _MINIX_SEMA_H
++
++int sem_init    (int start_value);
++int sem_down    (int semaphore_number);
++int sem_up      (int semaphore_number);
++int sem_release (int semaphore_number);
++
++#endif /* _MINIX_SEMA_H */
+diff -ruNp /usr/minix_src_clean/lib/libc/sys-minix/Makefile.inc /usr/src/lib/libc/sys-minix/Makefile.inc
+--- /usr/minix_src_clean/lib/libc/sys-minix/Makefile.inc	Sun May 11 04:11:33 2014
++++ /usr/src/lib/libc/sys-minix/Makefile.inc	Thu May 15 08:08:43 2014
+@@ -11,7 +11,7 @@ SRCS+= 	accept.c access.c bind.c brk.c sbrk.c m_closef
+ 	minix_rs.c mkdir.c mkfifo.c mknod.c mmap.c mount.c nanosleep.c \
+ 	open.c pathconf.c pipe.c poll.c pread.c ptrace.c pwrite.c \
+ 	read.c readlink.c reboot.c recvfrom.c recvmsg.c rename.c\
+-	rmdir.c select.c sem.c sendmsg.c sendto.c setgroups.c setsid.c \
++	rmdir.c select.c sem.c sema.c sendmsg.c sendto.c setgroups.c setsid.c \
+ 	setgid.c settimeofday.c setuid.c shmat.c shmctl.c shmget.c stime.c \
+ 	vectorio.c shutdown.c sigaction.c sigpending.c sigreturn.c sigsuspend.c\
+ 	sigprocmask.c socket.c socketpair.c stat.c statvfs.c symlink.c \
+diff -ruNp /usr/minix_src_clean/lib/libc/sys-minix/sema.c /usr/src/lib/libc/sys-minix/sema.c
+--- /usr/minix_src_clean/lib/libc/sys-minix/sema.c	Thu Jan  1 00:00:00 1970
++++ /usr/src/lib/libc/sys-minix/sema.c	Thu May 15 08:08:43 2014
+@@ -0,0 +1,67 @@
++#include <sys/cdefs.h>
++#include "namespace.h"
++#include <lib.h>
++
++#include <minix/com.h>
++#include <minix/rs.h>
++
++#ifndef OK
++#define OK 0
++#endif
++
++static int get_sema_endpt(endpoint_t *pt)
++{
++	return minix_rs_lookup("sema", pt);
++}
++
++int sem_init(int start_value)
++{
++	endpoint_t sema_ep;
++	message msg;
++
++	if (get_sema_endpt(&sema_ep) != OK) {
++		return ENOSYS;
++	}
++
++	msg.SEM_VALUE = start_value;
++	return _syscall(sema_ep, SEM_INIT, &msg);
++}
++
++int sem_down(int semaphore_number)
++{
++	endpoint_t sema_ep;
++	message msg;
++
++	if (get_sema_endpt(&sema_ep) != OK) {
++		return ENOSYS;
++	}
++
++	msg.SEM_NUM = semaphore_number;
++	return _syscall(sema_ep, SEM_DOWN, &msg);
++}
++
++int sem_up(int semaphore_number)
++{
++	endpoint_t sema_ep;
++	message msg;
++
++	if (get_sema_endpt(&sema_ep) != OK) {
++		return ENOSYS;
++	}
++
++	msg.SEM_NUM = semaphore_number;
++	return _syscall(sema_ep, SEM_UP, &msg);
++}
++
++int sem_release(int semaphore_number)
++{
++	endpoint_t sema_ep;
++	message msg;
++
++	if (get_sema_endpt(&sema_ep) != OK) {
++		return ENOSYS;
++	}
++
++	msg.SEM_NUM = semaphore_number;
++	return _syscall(sema_ep, SEM_RELEASE, &msg);
++}
+diff -ruNp /usr/minix_src_clean/releasetools/revision /usr/src/releasetools/revision
+--- /usr/minix_src_clean/releasetools/revision	Sun May 11 04:11:33 2014
++++ /usr/src/releasetools/revision	Thu May 15 08:10:54 2014
+@@ -1 +1 @@
+-1
++2
+diff -ruNp /usr/minix_src_clean/servers/Makefile /usr/src/servers/Makefile
+--- /usr/minix_src_clean/servers/Makefile	Sun May 11 04:11:33 2014
++++ /usr/src/servers/Makefile	Thu May 15 08:08:43 2014
+@@ -5,12 +5,12 @@
+ 
+ .if ${MKIMAGEONLY} == "yes"
+ 
+-SUBDIR=	ds init mfs pfs pm rs sched vfs vm
++SUBDIR=	ds init mfs pfs pm rs sched vfs vm sema
+ 
+ .else
+ 
+ SUBDIR=	ds ext2 inet init ipc is iso9660fs \
+-	mfs pfs pm procfs rs sched vfs vm devman
++	mfs pfs pm procfs rs sched vfs vm devman sema
+ 
+ .if ${MACHINE_ARCH} == "i386"
+ SUBDIR+= hgfs vbfs
+diff -ruNp /usr/minix_src_clean/servers/sema/Makefile /usr/src/servers/sema/Makefile
+--- /usr/minix_src_clean/servers/sema/Makefile	Thu Jan  1 00:00:00 1970
++++ /usr/src/servers/sema/Makefile	Thu May 15 08:08:43 2014
+@@ -0,0 +1,11 @@
++# Makefile for Semaphore Service
++PROG=	sema
++SRCS=	sema.c
++
++DPADD+= ${LIBSYS}
++LDADD+= -lsys
++
++MAN=
++BINDIR?= /usr/sbin
++
++.include <minix.service.mk>
+diff -ruNp /usr/minix_src_clean/servers/sema/sema.c /usr/src/servers/sema/sema.c
+--- /usr/minix_src_clean/servers/sema/sema.c	Thu Jan  1 00:00:00 1970
++++ /usr/src/servers/sema/sema.c	Thu May 15 08:25:35 2014
+@@ -0,0 +1,293 @@
++#include "sema.h"
++
++#define INITIAL_SIZE  10
++#define EXPAND_FACTOR 1.5
++
++#ifdef DEBUG
++// clang appears to support GCC __VA_ARGS__ extension
++#define DIE(msg, args...) { \
++	fprintf(stdout, "sema.c [ERROR]: " msg "\n", ## args); \
++	exit(EXIT_FAILURE); \
++}
++#define LOG(msg, args...) fprintf(stdout, "sema.c [INFO ]: " msg "\n", ## args)
++#else
++#define DIE(...)
++#define LOG(...)
++#endif
++
++#ifndef OK
++#define OK 0
++#endif
++
++/**
++ * This file contains the main program of a semaphore service implementation
++ * for MINIX.
++ */
++
++
++typedef struct link_t
++{
++	endpoint_t    value;
++	struct link_t *next;
++} link_t;
++
++typedef struct semaphore_t
++{
++	unsigned int value;
++	link_t       *head;
++	link_t       *tail;
++	int          in_use;
++} semaphore_t;
++
++
++semaphore_t	*semaphores;
++size_t			sem_len;				// Tracks the current size of the semaphore array
++size_t			tail_pos;				// Tracks the position of the slot after the last
++														//   initialized semaphore
++size_t			min_empty_pos;	// Tracks the minimum open slot
++
++
++// Utility functions
++
++static int next_empty_pos()
++{
++	// There can be no empty slots before min_empty_pos since min_empty_pos is
++	// updated each sem_release
++	int i;
++	for (i = min_empty_pos + 1; i < sem_len; i++) {
++		if (semaphores[i].in_use == 0) {
++			return i;
++		}
++	}
++	return -1;
++}
++
++
++// Semaphore Functions
++/**
++ * Initializes the semaphore array.
++ */
++static int init_sem()
++{
++	int i;
++
++	LOG("Initializing semaphore service...");
++
++	sem_len				= INITIAL_SIZE;
++	semaphores		= (semaphore_t *) malloc(sizeof (semaphore_t) * sem_len);
++	tail_pos			= 0;
++	min_empty_pos	= 0;
++
++	if (semaphores == 0) {
++		LOG("init_sem(): Ran out of memory");
++		return ENOMEM;
++	}
++
++	// Because malloc does not zero out memory
++	for (i = 0; i < sem_len; i++) {
++		semaphores[i].in_use = 0;
++	}
++
++	LOG("Semaphore service initialized.");
++	return OK;
++}
++
++int do_sem_up(message *msg)
++{
++	semaphore_t *sem;
++	LOG("SEM_UP received.");
++
++	// Bounds check
++	if (&(semaphores[msg->SEM_NUM]) > &(semaphores[sem_len])) {
++		return EINVAL;
++	}
++
++	sem = &semaphores[msg->SEM_NUM];
++	
++	// Check that semaphore is initialized
++	if (sem->in_use == 0) {
++		return EINVAL;
++	}
++
++	if (sem->head == NULL) {
++		// Increment value
++		++sem->value;
++	} else {
++		// if there are items on the queue, process one
++		
++		// Notify endpoint
++		message msg;
++		msg.SEM_NUM = sem->value;
++		send(sem->head->value, &msg);
++
++		// Dequeue
++		link_t *tmp = sem->head;
++		sem->head = sem->head->next;
++		free(tmp);
++	}
++
++	return OK;
++}
++int do_sem_down(message *msg)
++{
++	semaphore_t *sem;
++	LOG("SEM_DOWN received.");
++
++	// Bounds check
++	if (&(semaphores[msg->SEM_NUM]) > &(semaphores[sem_len])) {
++		return EINVAL;
++	}
++
++	sem = &semaphores[msg->SEM_NUM];
++	
++	// Check that semaphore is initialized
++	if (sem->in_use == 0) {
++		return EINVAL;
++	}
++
++	if (sem->value == 0) {
++		// if value == 0, add this item to queue
++		link_t *ep = malloc(sizeof(link_t));
++		if (ep == 0) {
++			LOG("do_sem_down(): Ran out of memory");
++			return ENOMEM;
++		}
++		ep->value  = msg->m_source;
++		ep->next   = NULL;
++
++		if (sem->head == 0) {
++			sem->head       = ep;
++		} else {
++			sem->tail->next = ep;
++		}
++		sem->tail = ep;
++		return SUSPEND;
++	} else {
++		// else, decrement value
++		--sem->value;
++		return OK;
++	}
++}
++int do_sem_release(message *msg)
++{
++	LOG("SEM_RELEASE received.");
++
++	if (semaphores[msg->SEM_NUM].head != 0) {
++		LOG("do_sem_release(): Tried to release active semaphore");
++		return EINUSE;
++	}
++
++	semaphores[msg->SEM_NUM].in_use = 0;
++
++	// Update min empty pos ptr
++	if (min_empty_pos == -1 || min_empty_pos > msg->SEM_NUM) {
++		min_empty_pos = msg->SEM_NUM;
++	}
++
++	return OK;
++}
++int do_sem_init(message *msg)
++{
++	LOG("SEM_INIT received.");
++
++	// Find empty slot
++	int sem_index;
++	if (tail_pos < sem_len) {
++		sem_index = tail_pos;
++		tail_pos++;
++	} else if (min_empty_pos != -1) {
++		sem_index = min_empty_pos;
++		min_empty_pos = next_empty_pos();
++	} else {
++		semaphore_t* tmp =
++			(semaphore_t *) realloc(semaphores, sem_len * EXPAND_FACTOR);
++		if (tmp == 0) {
++			LOG("do_sem_init(): Ran out of memory");
++			return ENOMEM;
++		}
++		semaphores = tmp;
++		sem_index  = tail_pos;
++		tail_pos++;
++	}
++
++	// Initialize new semaphore at sem_index
++	semaphores[sem_index].value  = msg->SEM_VALUE;
++	semaphores[sem_index].head   = NULL;
++	semaphores[sem_index].tail   = NULL;
++	semaphores[sem_index].in_use = 1;
++
++	return sem_index;
++}
++
++
++struct machine machine;
++
++// sema.c main function
++int main(void)
++{
++	endpoint_t	who;			// Caller endpoint
++	message			msg;			// Incoming message
++	int					call_nr;	// System call number
++	int					result;		// Result to system call
++	int					s;
++
++	// SEF local startup
++	sef_startup();
++	if ((s = sys_getmachine(&machine)) != OK) {
++		DIE("Could not get machine info: %d", s);
++	}
++
++	// Initialize service
++	init_sem();
++
++	// Main loop
++	while (TRUE) {
++		int rv;
++		int ipc_status;
++
++		// Wait for next message
++		if (rv = sef_receive_status(ANY, &msg, &ipc_status)) {
++			DIE("sef_receive_status error: %d", rv);
++		}
++
++		who				= msg.m_source;	// Sender endpoint
++		call_nr		= msg.m_type;		// System call number
++
++		if (is_ipc_notify(ipc_status)) {
++			switch (who) {
++				case CLOCK:
++					// expire_timers(msg.NOTIFY_TIMESTAMP);
++					continue;
++				default:
++					result = ENOSYS;
++			}
++		} else {
++			switch (call_nr) {
++			case SEM_DOWN:
++				result = do_sem_down(&msg);
++				break;
++			case SEM_INIT:
++				result = do_sem_init(&msg);
++				break;
++			case SEM_RELEASE:
++				result = do_sem_release(&msg);
++				break;
++			case SEM_UP:
++				result = do_sem_up(&msg);
++				break;
++			default:
++				result = EINVAL;
++			}
++		}
++
++		if (result != SUSPEND) {
++			int rv;
++			msg.m_type = result;
++			if (rv = send(who, &msg) != OK) {
++				LOG("Unable to send reply to endpoint %d: %d", who, rv);
++			}
++		}
++	}
++
++	return OK;
++}
+diff -ruNp /usr/minix_src_clean/servers/sema/sema.h /usr/src/servers/sema/sema.h
+--- /usr/minix_src_clean/servers/sema/sema.h	Thu Jan  1 00:00:00 1970
++++ /usr/src/servers/sema/sema.h	Thu May 15 08:08:43 2014
+@@ -0,0 +1,27 @@
++/* Function prototypes */
++
++#define _POSIX_SOURCE 1
++#define _MINIX        1
++#define _SYSTEM       1
++
++#include <stdlib.h>
++#include <stdio.h>
++
++#include <minix/config.h>
++#include <sys/types.h>
++#include <minix/const.h>
++
++#include <minix/com.h>
++#include <minix/syslib.h>
++#include <minix/sysutil.h>
++
++#include <errno.h>
++
++extern struct machine machine;
++
++/* main.c */
++int do_sem_up      (message *msg);
++int do_sem_down    (message *msg);
++int do_sem_release (message *msg);
++int do_sem_init    (message *msg);
++int main(void);
+diff -ruNp /usr/minix_src_clean/sys/sys/errno.h /usr/src/sys/sys/errno.h
+--- /usr/minix_src_clean/sys/sys/errno.h	Sun May 11 04:11:34 2014
++++ /usr/src/sys/sys/errno.h	Thu May 15 08:08:43 2014
+@@ -173,4 +173,7 @@
+ #define EDEADEPT     (_SIGN 302 )  /* specified endpoint is not alive */
+ #define EBADCPU	     (_SIGN 303 )  /* requested CPU does not work */
+ 
++/* Semaphore service errors */
++#define EINUSE       (_SIGN 350 )   /* semaphore is in use */
++
+ #endif /* !_SYS_ERRNO_H_ */

@@ -55,7 +55,7 @@ void do_grad(int num)
 		sem_down(sems[num % 2]);
 		printf("[GRAD ] Grad[%d] eating\n", num);
         count++;
-		sleep(1);
+		//sleep(1);
 
 		// Increment the semaphore of U-Grad
 		sem_up(sems[2]);
@@ -83,7 +83,7 @@ void do_ugrad(int num)
 		sem_down(sems[num % 2]);
 		printf("[UGRAD] U-Grad[%d] eating\n", num);
         count++;
-        sleep(1);
+        //sleep(1);
 
 		// Synchronize again with other U-Grad
 		sem_up(sems[3 - (num % 2)]);
@@ -124,7 +124,7 @@ int main(void)
 		pids[i] = invoke((i < GRAD_NUM) ? &do_grad : &do_ugrad, i);
 	}
 
-	sleep(5);
+	sleep(10);
 	clean_up();
 
 	return 0;
